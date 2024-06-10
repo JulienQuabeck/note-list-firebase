@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Firestore, collectionData, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc } from '@angular/fire/firestore';
+import { Firestore, collectionData, collection, doc, onSnapshot, addDoc, updateDoc, deleteDoc, query, where, orderBy, limit } from '@angular/fire/firestore';
 import { Observable } from 'rxjs';
 import { Note } from '../interfaces/note.interface';
 
@@ -10,22 +10,25 @@ export class NoteListService {
 
   trashNotes: Note[] = [];
   normalNotes: Note[] = [];
+  normalMarkedNotes: Note[] = [];
 
   firestore: Firestore = inject(Firestore);
 
   unsubTrash;
   unsubNotes;
+  unsubMarkedNotes;
 
   constructor() {
     this.unsubNotes = this.subNotesList();
+    this.unsubMarkedNotes = this.subMarkedNotesList();
     this.unsubTrash = this.subTrashList();
   }
 
-async deleteNote(colId: "notes" | "trash", docId: string){
-  await deleteDoc(this.getSingleDocRef(colId, docId)).catch(
-    (err) => {console.log(err)}
-  ); 
-}
+  async deleteNote(colId: "notes" | "trash", docId: string) {
+    await deleteDoc(this.getSingleDocRef(colId, docId)).catch(
+      (err) => { console.log(err) }
+    );
+  }
 
   async updateNote(note: Note) {
     if (note.id) {
@@ -54,21 +57,26 @@ async deleteNote(colId: "notes" | "trash", docId: string){
   }
 
   async addNote(item: Note, colId: "notes" | "trash") {
-    if(colId=="notes"){
-      item.type = "note";
-    }else{
-      item.type = "trash";
+    if (colId == "notes") {
+      // item.type = "note";
+      await addDoc(this.getNotesRef(), item).catch(
+        (err) => { console.error(err) }
+      ).then(
+        (docRef) => { console.log("Document written width ID: ", docRef?.id) }
+      );
+    } else {
+      // item.type = "trash";
+      await addDoc(this.getTrashRef(), item).catch(
+        (err) => { console.error(err) }
+      ).then(
+        (docRef) => { console.log("Document written width ID: ", docRef?.id) }
+      );
     }
-    await addDoc(this.getNotesRef(), item).catch(
-      (err) => { console.error(err) }
-    ).then(
-      (docRef) => { console.log("Document written width ID: ", docRef?.id) }
-    );
-
   }
 
   ngonDestroy() {
     this.unsubNotes();
+    this.unsubMarkedNotes();
     this.unsubTrash();
   }
 
@@ -82,10 +90,21 @@ async deleteNote(colId: "notes" | "trash", docId: string){
   }
 
   subNotesList() {
-    return onSnapshot(this.getNotesRef(), (list) => {
+    const q = query(this.getNotesRef(), where("marked", "==", false), limit(100));
+    return onSnapshot(q, (list) => {
       this.normalNotes = [];
       list.forEach(element => {
         this.normalNotes.push(this.setNoteObject(element.data(), element.id));
+      })
+    });
+  }
+
+  subMarkedNotesList(){
+    const q = query(this.getNotesRef(), where("marked", "==", true), limit(100));
+    return onSnapshot(q, (list) => {
+      this.normalMarkedNotes = [];
+      list.forEach(element => {
+        this.normalMarkedNotes.push(this.setNoteObject(element.data(), element.id));
       })
     });
   }
@@ -95,7 +114,7 @@ async deleteNote(colId: "notes" | "trash", docId: string){
   }
 
   getTrashRef() {
-    return collection(this.firestore, 'items');
+    return collection(this.firestore, 'trash');
   }
 
   getSingleDocRef(colId: string, docId: string) {
